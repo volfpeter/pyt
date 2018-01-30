@@ -211,7 +211,7 @@ def is_connected(client: MongoClient) -> bool:
 # ----------------------------------------
 
 
-MongoDataType: TypeVar = TypeVar("MongoDataType", bound="MongoDocument")
+MongoDataType = TypeVar("MongoDataType", bound="MongoDocument")
 """
 The base data type for `MongoDocument`s.
 """
@@ -374,7 +374,7 @@ class ServerDescriptor(object):
     # Initialization
     # ----------------------------------------
 
-    def __init__(self, url: str, port: int):
+    def __init__(self, url: str, port: int) -> None:
         """
         Initialization.
 
@@ -573,7 +573,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
     # ----------------------------------------
 
     @autoretry
-    def find_one(self, query: Dict) -> Optional[MongoDataType]:
+    def find_one(self, query: Dict) -> Optional[MongoDocument]:
         """
         Returns the first document that matches the given query in the collection
         if at least one such document exists.
@@ -588,7 +588,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
         return None if data is None else self._document_class.create_from_mongo(data)
 
     @autoretry
-    def find_by_id(self, identifier: Union[ObjectId, str]) -> Optional[MongoDataType]:
+    def find_by_id(self, identifier: Union[ObjectId, str]) -> Optional[MongoDocument]:
         """
         Finds the MongoDB JSON document with the given identifier in the collection
         if such a document exists.

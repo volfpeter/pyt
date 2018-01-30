@@ -119,7 +119,7 @@ def initialize(root_name: str, add_console_handler: bool = True, add_file_handle
 
     # Console handler configuration.
     if add_console_handler:
-        handler = logging.StreamHandler()
+        handler: logging.Handler = logging.StreamHandler()
         # Set the log level and the formatter.
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(formatter)
