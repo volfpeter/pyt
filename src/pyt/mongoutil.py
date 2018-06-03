@@ -1,5 +1,5 @@
 """
-PyMongo-based utilities for dealing with MongoDB.
+PyMongo-based utilities and no-magic object document mapper components for dealing with MongoDB.
 
 The module requires `PyMongo` to be installed.
 """
@@ -316,10 +316,41 @@ class MongoDocument(object):
         raise NotImplementedError("{} is abstract.".format(self.__class__.__name__))
 
 
-class BaseDocument(MongoDocument):
+class MainDocument(MongoDocument):
     """
-    Base implementation of `MongoDocument`.
+    Base implementation of `MongoDocument` that should be the base class of "main"
+    documents (i.e. not subdocuments) that have an `_id`.
     """
+
+    # Initialization
+    # ----------------------------------------
+
+    def __init__(self) -> None:
+        """
+        Initialization
+        """
+        super().__init__()
+
+        self._id: ObjectId = ObjectId()
+        """
+        The unique MongoDB identifier of the document.
+        """
+
+    # Dunder methods
+    # ----------------------------------------
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}<_id={str(self._id)}>"
+
+    # Properties
+    # ----------------------------------------
+
+    @property
+    def id(self) -> ObjectId:
+        """
+        The unique MongoDB identifier of the document.
+        """
+        return self._id
 
     # MongoDocument class methods
     # ----------------------------------------
@@ -338,12 +369,71 @@ class BaseDocument(MongoDocument):
 
     @classmethod
     def json_to_mongo(cls, data: Dict) -> None:
-        # Don't modify data.
+        _id: Optional[str] = data.get("_id")
+        if _id is not None:
+            data["_id"] = ObjectId(_id)
+
+    @classmethod
+    def mongo_to_json(cls, data: Dict) -> None:
+        _id: Optional[ObjectId] = data.get("_id")
+        if _id is not None:
+            data["_id"] = str(_id)
+
+    # MongoDocument methods
+    # ----------------------------------------
+
+    def to_json(self) -> Dict:
+        result: Dict = self.to_mongo()
+        self.__class__.mongo_to_json(result)
+        return result
+
+    def from_json(self, data: Dict) -> None:
+        self.__class__.json_to_mongo(data)
+        self.from_mongo(data)
+
+    def to_mongo(self) -> Dict:
+        return {"_id": self._id}
+
+    def from_mongo(self, data: Dict) -> None:
+        if "_id" in data:
+            self._id = data["_id"]
+
+
+class SubDocument(MongoDocument):
+    """
+    Base implementation of `MongoDocument` that should be the base class of subdocuments.
+    """
+
+    # Initialization
+    # ----------------------------------------
+
+    def __init__(self) -> None:
+        """
+        Initialization.
+        """
+        super().__init__()
+
+    # MongoDocument class methods
+    # ----------------------------------------
+
+    @classmethod
+    def create_from_json(cls: Type[MongoDataType], data: Dict) -> MongoDataType:
+        result: MongoDataType = cls()
+        result.from_json(data)
+        return result
+
+    @classmethod
+    def create_from_mongo(cls: Type[MongoDataType], data: Dict) -> MongoDataType:
+        result: MongoDataType = cls()
+        result.from_mongo(data)
+        return result
+
+    @classmethod
+    def json_to_mongo(cls, data: Dict) -> None:
         pass
 
     @classmethod
     def mongo_to_json(cls, data: Dict) -> None:
-        # Don't modify data.
         pass
 
     # MongoDocument methods
@@ -362,7 +452,6 @@ class BaseDocument(MongoDocument):
         return {}
 
     def from_mongo(self, data: Dict) -> None:
-        # Do nothing.
         pass
 
 
@@ -391,6 +480,12 @@ class ServerDescriptor(object):
         """
         The port to use to connect to the server.
         """
+
+    # Dunder methods
+    # ----------------------------------------
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}<url={self._url},port={self._port}>"
 
     # Properties
     # ----------------------------------------
@@ -461,6 +556,12 @@ class DatabaseDescriptor(object):
 
         self.database.authenticate(username, password)
 
+    # Dunder methods
+    # ----------------------------------------
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}<server={self._server},database_name={self._database_name}>"
+
     # Properties
     # ----------------------------------------
 
@@ -497,7 +598,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
 
     def __init__(self,
                  database: DatabaseDescriptor,
-                 document_class: Type[MongoDocument],
+                 document_class: Type[MainDocument],
                  collection_name: str) -> None:
         """
         Initialization.
@@ -506,9 +607,8 @@ class CollectionDescriptor(Generic[MongoDataType]):
 
         Arguments:
             database (DatabaseDescriptor): The descriptor of the database that has the collection.
-            document_class (Type[MongoDocument]): The class of the documents stored in the
-                                                  collection. It must be the same as the
-                                                  collection's generic type.
+            document_class (Type[MainDocument]): The class of the documents stored in the collection.
+                                                 It must be the same as the collection's generic type.
             collection_name (str): The name of the referenced collection.
         """
         self._database_descriptor: DatabaseDescriptor = database
@@ -516,7 +616,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
         The descriptor of the database that has the collection.
         """
 
-        self._document_class: Type[MongoDocument] = document_class
+        self._document_class: Type[MainDocument] = document_class
         """
         The class of the documents stored in the collection.
         """
@@ -530,6 +630,15 @@ class CollectionDescriptor(Generic[MongoDataType]):
         """
         The referenced collection.
         """
+
+    # Dunder methods
+    # ----------------------------------------
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}"\
+            f"<database_descriptor={self._database_descriptor},"\
+            f"document_class={self._document_class.__name__},"\
+            f"collection_name={self._collection_name}>"
 
     # Properties
     # ----------------------------------------
@@ -556,7 +665,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
         return self._database_descriptor
 
     @property
-    def document_class(self) -> Type[MongoDocument]:
+    def document_class(self) -> Type[MainDocument]:
         """
         The class of the documents stored in the collection.
         """
@@ -573,7 +682,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
     # ----------------------------------------
 
     @autoretry
-    def find_one(self, query: Dict) -> Optional[MongoDocument]:
+    def find_one(self, query: Dict) -> Optional[MainDocument]:
         """
         Returns the first document that matches the given query in the collection
         if at least one such document exists.
@@ -588,7 +697,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
         return None if data is None else self._document_class.create_from_mongo(data)
 
     @autoretry
-    def find_by_id(self, identifier: Union[ObjectId, str]) -> Optional[MongoDocument]:
+    def find_by_id(self, identifier: Union[ObjectId, str]) -> Optional[MainDocument]:
         """
         Finds the MongoDB JSON document with the given identifier in the collection
         if such a document exists.
@@ -626,7 +735,7 @@ class CollectionDescriptor(Generic[MongoDataType]):
         return self._collection.insert_many([item.to_mongo() for item in items])
 
 
-class DevCollectionDescriptor(CollectionDescriptor, Generic[MongoDataType]):
+class DevCollectionDescriptor(CollectionDescriptor[MongoDataType]):
     """
     `CollectionDescriptor` extension to use exclusively for development.
     """
